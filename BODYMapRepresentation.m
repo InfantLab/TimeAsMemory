@@ -16,3 +16,4 @@ out = Scalar2IceCubeTray(values,vectorwidth,lo,hi,inverseFlag);
 if ~inverseFlag && binaryFlag
     out = ceil(out);
 end
+

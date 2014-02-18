@@ -1,7 +1,7 @@
-function [Wt1, Wt2 ] = backprop(IN, OUT, nhidnodes, gamma, nepochs,hidnoise,momentum, beta, trackdevelopment, evolveweights)
-% usage  [Wt1, Wt2 ] = backprop(IN, OUT, nhidnodes, gamma, nepochs,hidnoise,momentum, beta, trackdevelopment, evolveweights)
+function [Wt1, Wt2 ] = local_srn(IN, OUT, nhidnodes, gamma, nepochs,forgettingrate,hidnoise,momentum, beta, trackdevelopment, evolveweights)
+% usage  [Wt1, Wt2 ] = local_srn(IN, OUT, nhidnodes, gamma, nepochs,forgettingrate,hidnoise,momentum, beta, trackdevelopment, evolveweights)
 %
-% nnet with one hidden layer 
+% nnet with one hidden layer and Elman type recurrence
 % 
 % learning with backpropagation 
 % 
@@ -9,30 +9,30 @@ function [Wt1, Wt2 ] = backprop(IN, OUT, nhidnodes, gamma, nepochs,hidnoise,mome
 % defaults for if we haven't been given vals for gamma & nepochs
 if nargin < 4, gamma = 0.05; end
 if nargin < 5, nepochs = 100; end
-if nargin < 6, hidnoise = 0.0; end
-if nargin < 7, momentum = 0.005; end
-if nargin < 8, beta = 1.0; end
-if nargin < 9, trackdevelopment = false; end %if true note the weights at end of each epoch
+if nargin < 6, forgettingrate = 0.0; end
+if nargin < 7, hidnoise = 0.0; end
+if nargin < 8, momentum = 0.005; end
+if nargin < 9, beta = 1.0; end
+if nargin < 10, trackdevelopment = false; end %if true note the weights at end of each epoch
 
 % get the dimensions of our data sets
 [datarows, inelem]=size(IN); 
 [~, outelem]=size(OUT);
 
-% won't track error for backprop
+% won't track error for srn
 % TotError = zeros(nepochs*datarows,2);
 
-nblanks = nhidnodes;
-
-if nargin < 10
+if nargin < 11
     % initialise random weight matrices
-    Wt1 = 0.1* randn(nhidnodes,inelem + nblanks + 1); % +1 for bias!
+    Wt1 = 0.1* randn(nhidnodes,inelem + nhidnodes + 1); % +1 for bias!
     Wt2 = 0.1* randn(outelem, nhidnodes + 1); 
 else
     Wt1 = evolveweights.wt1{1};
     Wt2 = evolveweights.wt2{1};
 end
 
-hidzeros = zeros(nblanks,1);
+A = zeros(inelem+nhidnodes,1);
+LastHiddenActivation =zeros(nhidnodes,1);
 Thid = zeros(nhidnodes,1);
         
 old_dWt1 = 0.0;
@@ -40,13 +40,12 @@ old_dWt2 = 0.0;
 
 for n = 1:nepochs
 %     disp(strcat('epoch ', n));
-    %randomise order of training items
     rp = randperm(datarows);
     for p = 1:datarows
         q = rp(p);
         % get appropriate input & target rows
         % though we will represent them as col vectors
-        A = [IN(q,1:inelem)'; hidzeros];    
+        A = [IN(q,1:inelem)'; LastHiddenActivation];
         T = OUT(q,1:outelem)';
         % feedforward
         % layer 1 
@@ -60,7 +59,9 @@ for n = 1:nepochs
         if hidnoise > 0
             O1 = O1 + sqrt(hidnoise)*randn(nhidnodes,1);
         end
-
+        % store internal state for next loop
+        % but multiply each value by (1-forgetting rate)
+        LastHiddenActivation = (1-forgettingrate) * O1;
         d_O1 = d_activation(B1,beta,0);
         
         % layer 2

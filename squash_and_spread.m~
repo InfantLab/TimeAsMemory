@@ -77,7 +77,7 @@ for n = 1:no_of_timesteps
   % timestep.
 
   for pt = 2:L-1
-    delta_mat(pt,[pt-1,pt,pt+1]) = ...
+`    delta_mat(pt,[pt-1,pt,pt+1]) = ...
       [spread_factor*Y(pt), self_excitation*Y(pt), spread_factor*Y(pt)];
   end;
   %     for pt = 3:L-2

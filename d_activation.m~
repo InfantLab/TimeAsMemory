@@ -1,0 +1,2 @@
+function a = d_activation(A,beta,theta)
+

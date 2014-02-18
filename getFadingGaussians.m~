@@ -23,7 +23,6 @@ function [timeIntervals,memoryRepresentations] = getFadingGaussians(gaussianPara
 
 ANALYTIC_GAUSSIAN = 0;
 FADING_GAUSSIAN = 1;
-SQSH_SPRD = 2;
 
 if gaussianParams.lognormalIntervals
     intervalRange = log(gaussianParams.maxInterval)-log(gaussianParams.minInterval);
@@ -53,7 +52,7 @@ if gaussianParams.inputType == ANALYTIC_GAUSSIAN % my original inputs
         memoryRepresentations(k,:) = normdist(murange(k,:)/gaussianParams.memoryWidthUnit,0,timeIntervals(k)/gaussianParams.memoryTimeUnit);
     end
      
-elseif gaussianParams.inputType == FADING_GAUSSIAN % Bob's original squash and spread function
+elseif gaussianParams.inputType == FADING_GAUSSIAN % Bob's squash and spread function
  
     
 %PARAMS
@@ -64,6 +63,9 @@ elseif gaussianParams.inputType == FADING_GAUSSIAN % Bob's original squash and s
     
     [X, Y, no_of_timesteps, Stddev] = squash_and_spread (gaussianParams.spread_factor, gaussianParams.leakage_factor, gaussianParams.self_excitation, false, true);
 
+
+    [
+    sqsh_n_sprd(20, 1, gaussianParams.spread_factor, .75, gaussianParams.spread_factor, 0)
     
     % squash_and_spread gives us no_of_timesteps gaussians as rows of Y
     % which represent the evoling memory trace
@@ -88,9 +90,6 @@ elseif gaussianParams.inputType == FADING_GAUSSIAN % Bob's original squash and s
         timeIntervals = gaussianParams.minInterval + samplerows .* (gaussianParams.maxInterval-gaussianParams.minInterval) / no_of_timesteps;
     end
     memoryRepresentations = Y(samplerows, :);
-elseif gaussianParams.inputType == SQSH_SPRD 
-    %newest squash and spread function june 2012
-    memoryRepresentations =     sqsh_n_sprd(20, 1, gaussianParams.spread_factor, gaussianParams.leakage_factor, gaussianParams.spread_factor, 0);
 end
 
 %finally multiply by amplitude

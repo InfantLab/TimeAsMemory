@@ -1,4 +1,4 @@
-function [intervals,representations] = TimeAsMemory(inputType, outputType, fixedLocation, ...
+function [intervals,representations] = TimeAsMemory_v2(inputType, outputType, fixedLocation, ...
                                                     memorynoise, networknoise,showcolumnsgraph,...
                                                     showMainGraphs,trackdevelopment,showCorrelations, ...
                                                     showAttentionEffects)
@@ -27,12 +27,13 @@ close all;
 %input curve types
 ANALYTIC_GAUSSIAN = 0;
 FADING_GAUSSIAN = 1;
+SQSH_SPRD = 2;
 %output curve types
 LINEAR_OUTPUT = 1;     
 LOGLINEAR_OUTPUT = 0;
 
 % Default settings
-if nargin < 1, inputType = ANALYTIC_GAUSSIAN; end                   %what shape is input function
+if nargin < 1, inputType = SQSH_SPRD; end                   %what shape is input function
 if nargin < 2, outputType = LOGLINEAR_OUTPUT; end                   %what shape is input function
 if nargin < 3, fixedLocation = true; end        %is percept centred on input field?
 if nargin < 4, memorynoise = false; end             %is memory representation noisy
@@ -41,14 +42,15 @@ if nargin < 6, showcolumnsgraph = true; end         %show graph of co
 if nargin < 7, showMainGraphs = true; end         %show graph of main results
 if nargin < 8, trackdevelopment = true; end        %make note of weights at intervvals during learning     
 if nargin < 9, showCorrelations = false; end        %plot graph of correlation between modalities over learning
-if nargin < 10, showAttentionEffects = false; end
+if nargin < 10, showAttentionEffects = true; end    %test the same for
+if nargin < 11, showProspectiveAttentionEffects = true; end
 
-includemodalitytwo = true;
+includemodalitytwo = false;
 modalitycount = 1 + includemodalitytwo;
 
 nBabies = 20;
 NEpochs = 10;
-NTrainingItems = 5000;
+NTrainingItems = 10000;
 LearningRate = 0.01;
 momentum = 0.005;
 OutputLoopSize = 10; %used for finding mean & std of network outputs
@@ -59,19 +61,24 @@ maxInterval = 120; %seconds
 numIntervals = 60;
 
 %network architecture
-inputWidth = 41;    %how wide is input vector?
+inputWidth = 43;    %how wide is input vector?
 nHidNodes = 10;
 outputWidth = 10;   %how wide is output vector
 
 %Analytic Gaussian params
 memoryWidthUnit = 5;
 memoryTimeUnit = 45;
-memoryAmplitude = 2;
+memoryAmplitude = 10;
 
 %Fading Gaussian params 
-spread_factor = 0.0045;
-leakage_factor = 0.0105;
+% spread_factor = 0.0045;
+% leakage_factor = 0.0105;
+% self_excitation = 0.001;
+
+spread_factor = 0.1;
+leakage_factor = 0.7;
 self_excitation = 0.001;
+
 
 
 if networknoise
@@ -124,7 +131,7 @@ modality{2} = populateInputsOutputs(modality{2});
 %%%%%%%%%%%%% EFFECT OF ATTENTION %%%%%%%%%%%%%%%%%%%%%%%%%%%
 %another version of the same inputs and outputs but modulated by attention
 % do this by applying multiplier to self-excitation
-attentionMultiplier = 1.4;
+attentionMultiplier = 0.6;
 
 attention{1} = setPercepts(inputType,minInterval,maxInterval,numIntervals, ...
                           inputWidth, outputWidth,fixedLocation, ...
@@ -182,7 +189,7 @@ for babycounter = 1:nBabies
         % save('trainedweights1.mat', 'wt1', 'wt2');
 
 
-        for devstage = 1    :NEpochs
+        for devstage = 1:NEpochs
             % now get set of representative outputs from our our trained network
             % present each of the possible curves and see network prediction 
             % do this multiple times to get the prediction error (i.e. scalar property)   
@@ -220,17 +227,89 @@ for babycounter = 1:nBabies
             end
             %calculate mean and stdev for outputs
             Baby{babycounter}.Modality{mod}.MeanOutput{devstage} = mean(Baby{babycounter}.Modality{mod}.TrainedOutTimes{devstage}, 1);
-            Baby{babycounter}.Modality{mod}.StdDevOutput{devstage} = std(Baby{babycounter}.Modality{mod}.TrainedOutTimes{devstage}  - ones(OutputLoopSize,1) * modality{mod}.Intervals, 1);
+            Baby{babycounter}.Modality{mod}.StdDevOutput{devstage} = std(Baby{babycounter}.Modality{mod}.TrainedOutTimes{devstage}, 1);
             Baby{babycounter}.Modality{mod}.RelScalarErrors{devstage} = Baby{babycounter}.Modality{mod}.StdDevOutput{devstage} ./ Baby{babycounter}.Modality{mod}.MeanOutput{devstage};
             Baby{babycounter}.Modality{mod}.AbsScalarErrors{devstage} = Baby{babycounter}.Modality{mod}.StdDevOutput{devstage} ./ modality{mod}.Intervals;
             
             Baby{babycounter}.Modality{mod}.AttentionMeanOutput{devstage} = mean(Baby{babycounter}.Modality{mod}.AttentionOutTimes{devstage}, 1);
-            Baby{babycounter}.Modality{mod}.AttentionStdDevOutput{devstage} = std(Baby{babycounter}.Modality{mod}.AttentionOutTimes{devstage}  - ones(OutputLoopSize,1) * modality{mod}.Intervals, 1);
+            Baby{babycounter}.Modality{mod}.AttentionStdDevOutput{devstage} = std(Baby{babycounter}.Modality{mod}.AttentionOutTimes{devstage}, 1);
             Baby{babycounter}.Modality{mod}.AttentionRelScalarErrors{devstage} = Baby{babycounter}.Modality{mod}.AttentionStdDevOutput{devstage} ./ Baby{babycounter}.Modality{mod}.AttentionMeanOutput{devstage};
             Baby{babycounter}.Modality{mod}.AttentionAbsScalarErrors{devstage} = Baby{babycounter}.Modality{mod}.AttentionStdDevOutput{devstage} ./ modality{mod}.Intervals;
 
-        end
+                
+            if showProspectiveAttentionEffects
+                for k = 1:OutputLoopSize
+                    if memorynoise
+                        %add noise to memory decay curves
+                        modality{mod}.NoisyInputs = modality{mod}.MemoryCurves + ...
+                                              memorynoise_proportional_sd * modality{mod}.MemoryCurves .* randn(R,C)+ ... 
+                                              memorynoise_fixed_mean + memorynoise_fixed_sd * rand(R,C);
 
+
+                        %same for attention curves
+                        attention{mod}.NoisyInputs = attention{mod}.MemoryCurves + ...
+                                              memorynoise_proportional_sd * attention{mod}.MemoryCurves .* randn(R,C) + ... 
+                                              memorynoise_fixed_mean + memorynoise_fixed_sd * rand(R,C);                  
+                    else
+                        modality{mod}.NoisyInputs = modality{mod}.MemoryCurves;        
+                        attention{mod}.NoisyInputs = attention{mod}.MemoryCurves;   
+                    end
+
+
+                    %To get the prospective time estimate outputs we let
+                    %network cycle through memory curves until it's output
+                    %reaches the target value then we see what input curve
+                    %this actually represents. 
+
+                    tempOutputs = backprop_out(modality{mod}.NoisyInputs,Baby{babycounter}.Modality{mod}.wt1{devstage},Baby{babycounter}.Modality{mod}.wt2{devstage},networknoiserate);
+                    tempAttentionOutputs = backprop_out(attention{mod}.NoisyInputs,Baby{babycounter}.Modality{mod}.wt1{devstage},Baby{babycounter}.Modality{mod}.wt2{devstage},networknoiserate);
+                    %convert network outputs representation into time
+                    %values
+                    if modality{mod}.UseBODYMapRepresentation
+                        tempEstimates = BODYMapRepresentation(tempOutputs,outputWidth,minInterval, maxInterval,true,modality{mod}.useBODYBinaryOut );
+                        tempAttentionEstimates = BODYMapRepresentation(tempAttentionOutputs,outputWidth,minInterval, maxInterval,true,modality{mod}.useBODYBinaryOut );
+                    else
+                        tempEstimates = ATOMrepresentation(tempOutputs,outputWidth,minInterval, maxInterval,true);    
+                        tempAttentionEstimates = ATOMrepresentation(tempAttentionOutputs,outputWidth,minInterval, maxInterval,true);    
+                    end
+                    for thisInterval = 1:modality{1}.numIntervals
+                        targetTime = modality{1}.Intervals(thisInterval);
+                        %first assign a maximum in case we don't reach it.
+                        Baby{babycounter}.Modality{mod}.ProspectiveOutputs{devstage}(k,thisInterval) = modality{1}.Intervals(modality{1}.numIntervals);
+                        for j=1:modality{1}.numIntervals
+                            if tempEstimates(j) >= targetTime
+                                Baby{babycounter}.Modality{mod}.ProspectiveOutputs{devstage}(k,thisInterval) = modality{1}.Intervals(j);
+                                break;
+                            end
+                        end
+                    end
+                    %now do same again for the attention estimates
+                    for thisInterval = 1:modality{1}.numIntervals
+                        targetTime = modality{1}.Intervals(thisInterval);
+                        %first assign a maximum in case we don't reach it.
+                        Baby{babycounter}.Modality{mod}.ProspectiveAttentionOutputs{devstage}(k,thisInterval) = modality{1}.Intervals(modality{1}.numIntervals);
+                        for j=1:modality{1}.numIntervals
+                            if tempAttentionEstimates(j) >= targetTime
+                                Baby{babycounter}.Modality{mod}.ProspectiveAttentionOutputs{devstage}(k,thisInterval) = modality{1}.Intervals(j);
+                                break;
+                            end
+                        end
+                    end
+                    
+                end
+                 %calculate mean and stdev for outputs
+            Baby{babycounter}.Modality{mod}.ProspectiveMeanOutput{devstage} = mean(Baby{babycounter}.Modality{mod}.ProspectiveOutputs{devstage}, 1);
+            Baby{babycounter}.Modality{mod}.ProspectiveStdDevOutput{devstage} = std(Baby{babycounter}.Modality{mod}.ProspectiveOutputs{devstage}, 1);
+            Baby{babycounter}.Modality{mod}.ProspectiveRelScalarErrors{devstage} = Baby{babycounter}.Modality{mod}.ProspectiveStdDevOutput{devstage} ./ Baby{babycounter}.Modality{mod}.ProspectiveMeanOutput{devstage};
+            Baby{babycounter}.Modality{mod}.ProspectiveAbsScalarErrors{devstage} = Baby{babycounter}.Modality{mod}.ProspectiveStdDevOutput{devstage} ./ modality{mod}.Intervals;
+            
+            Baby{babycounter}.Modality{mod}.ProspectiveAttentionMeanOutput{devstage} = mean(Baby{babycounter}.Modality{mod}.ProspectiveAttentionOutputs{devstage}, 1);
+            Baby{babycounter}.Modality{mod}.ProspectiveAttentionStdDevOutput{devstage} = std(Baby{babycounter}.Modality{mod}.ProspectiveAttentionOutputs{devstage}  - ones(OutputLoopSize,1) * modality{mod}.Intervals, 1);
+            Baby{babycounter}.Modality{mod}.ProspectiveAttentionRelScalarErrors{devstage} = Baby{babycounter}.Modality{mod}.ProspectiveAttentionStdDevOutput{devstage} ./ Baby{babycounter}.Modality{mod}.ProspectiveAttentionMeanOutput{devstage};
+            Baby{babycounter}.Modality{mod}.ProspectiveAttentionAbsScalarErrors{devstage} = Baby{babycounter}.Modality{mod}.ProspectiveAttentionStdDevOutput{devstage} ./ modality{mod}.Intervals;
+
+            end
+        end
     end
 end
 
@@ -272,17 +351,59 @@ end
 if showcolumnsgraph 
    %graph showing the inputs and outputs for representative set of time
    %intervals
+  
    fig = figure(1);
+   %Set up figure dimensions for generating the animation 
+    subplot(3,1,ph);
+    axis([0 modality{1}.inputWidth + 1 0 1.1]);
+    bar(1:modality{1}.inputWidth, modality{1}.MemoryCurves(1,:));
+    xlim([0 modality{1}.inputWidth + 1]);
+    ylim([0 2.2]);
+    xlabel('Input Columns');
+    ylabel('Activation');
+    title(['Input modality {' num2str(1) '}' ]);
+
+        %The output representation from the network
+    subplot(3,1,2)
+    axis([0 outputWidth + 1 0 1.1]);
+    if modality{2}.UseBODYMapRepresentation
+        bar(1:outputWidth, modality{1}.BODYOutputs(1,:));
+    else
+        bar(1:outputWidth, modality{1}.ATOMOutputs(1,:));
+    end
+    xlim([0 outputWidth + 1]);
+    ylim([0  1.1]);
+    xlabel('Output Columns');
+    ylabel('Activation');
+    title('Expected out');
+
+
+    %The output representation from the network
+    subplot(3,1,3)
+    axis([0 outputWidth + 1 0 1.1]);
+    bar(1:outputWidth, Baby{babycounter}.Modality{1}.TrainedOutputs{NEpochs}{1}(1,:));
+    xlim([0 outputWidth + 1]);
+    ylim([0  1.1]);
+    xlabel('Output Columns');
+    ylabel('Activation');
+    title('Network out');
+   
+    % Get figure size
+    pos = get(gcf, 'Position');
+    width = pos(3); height = pos(4);
+   % Preallocate data (for storing frame data)
+   mov = zeros(height, width, 1, modality{ph}.numIntervals, 'uint8');
    babycounter = nBabies; % just show last run
    for ph = 1:modalitycount
-       
+       disp(['Modality ' num2str(ph)]); 
+       pause;
     %First graph things after learning first modality
     for t = 1:modality{ph}.numIntervals
         
         set(fig, 'Name',  ['Phase' num2str(ph) ' - Input Time  t= ' num2str(t)]);
         
         %The guassian distributions input on this phase
-        subplot(2,2,ph);
+        subplot(3,1,1);
         axis([0 modality{ph}.inputWidth + 1 0 1.1]);
         bar(1:modality{ph}.inputWidth, modality{ph}.MemoryCurves(t,:));
         xlim([0 modality{ph}.inputWidth + 1]);
@@ -291,18 +412,9 @@ if showcolumnsgraph
         ylabel('Activation');
         title(['Input modality {' num2str(ph) '}' ]);
         
-        %The guassian distribution that is input.
-        subplot(2,2,3-ph);
-        axis([0 modality{2}.inputWidth + 1 0 1.1]);
-        bar(1:modality{2}.inputWidth, zeros(1, modality{2}.inputWidth) );
-        xlim([0 modality{2}.inputWidth + 1]);
-        ylim([0 2.2]);
-        xlabel('Input Columns');
-        ylabel('Activation');
-        title(['Input modality {' num2str(3-ph) '}' ]);
 
         %The output representation from the network
-        subplot(2,2,3)
+        subplot(3,1,2)
         axis([0 outputWidth + 1 0 1.1]);
         if modality{2}.UseBODYMapRepresentation
             bar(1:outputWidth, modality{1}.BODYOutputs(t,:));
@@ -317,7 +429,7 @@ if showcolumnsgraph
         
         
         %The output representation from the network
-        subplot(2,2,4)
+        subplot(3,1,3)
         axis([0 outputWidth + 1 0 1.1]);
         bar(1:outputWidth, Baby{babycounter}.Modality{ph}.TrainedOutputs{NEpochs}{1}(t,:));
         xlim([0 outputWidth + 1]);
@@ -326,9 +438,20 @@ if showcolumnsgraph
         ylabel('Activation');
         title('Network out');
      
-        
+        % Get frame as an image
+        f = getframe(gcf);
+
+        % Create a colormap for the first frame. For the rest of the frames,
+        % use the same colormap
+        if t == 1
+            [mov(:,:,1,t), map] = rgb2ind(f.cdata, 256, 'nodither');
+        else
+            mov(:,:,1,t) = rgb2ind(f.cdata, map, 'nodither');
+        end
          pause(0.2);
     end
+    % Create animated GIF
+    imwrite(mov, map, 'animation.gif', 'DelayTime', 200, 'LoopCount', inf);
    end
 end
 
@@ -472,7 +595,7 @@ end
 if showAttentionEffects
     figure(7);
     for ph= 1:modalitycount
-        subplot(2,1,ph);
+        subplot(modalitycount,1,ph);
         hold on;
         axis([0 maxInterval 0 maxInterval * 1.2]);
         xlabel('Time Interval /seconds');
@@ -480,11 +603,33 @@ if showAttentionEffects
         xlim([0  maxInterval]);
         ylim([0  maxInterval]);
         plot(modality{ph}.Intervals, modality{ph}.Intervals); 
-        errorbar(modality{ph}.Intervals, Baby{babycounter}.Modality{ph}.MeanOutput{NEpochs}, 0.5* Baby{babycounter}.Modality{mod}.StdDevOutput{NEpochs},'+g');
-        errorbar(modality{ph}.Intervals, Baby{babycounter}.Modality{ph}.AttentionMeanOutput{NEpochs}, 0.5* Baby{babycounter}.Modality{mod}.AttentionStdDevOutput{NEpochs},'*r');
+        errorbar(modality{ph}.Intervals, Baby{babycounter}.Modality{ph}.MeanOutput{NEpochs}, 0.5* Baby{babycounter}.Modality{mod}.StdDevOutput{NEpochs},'-+b');
+        errorbar(modality{ph}.Intervals, Baby{babycounter}.Modality{ph}.AttentionMeanOutput{NEpochs}, 0.5* Baby{babycounter}.Modality{mod}.AttentionStdDevOutput{NEpochs},'-*g');
         
-        title('Effect of attention');
+        title('Effect of attention on retrospective time estimates');
+        hold off;
+    end
+end
+
+%%% plot AttentionEffect
+if showProspectiveAttentionEffects
+    figure(8);
+    for ph= 1:modalitycount
+        subplot(modalitycount,1,ph);
+        hold on;
+        axis([0 maxInterval 0 maxInterval * 1.2]);
+        xlabel('Time Interval /seconds');
+        ylabel('Prediction /seconds');
+        xlim([0  maxInterval]);
+        ylim([0  maxInterval]);
+        plot(modality{ph}.Intervals, modality{ph}.Intervals); 
+        errorbar(modality{ph}.Intervals, Baby{babycounter}.Modality{ph}.ProspectiveMeanOutput{NEpochs}, 0.5* Baby{babycounter}.Modality{mod}.ProspectiveStdDevOutput{NEpochs},'-+b');
+        errorbar(modality{ph}.Intervals, Baby{babycounter}.Modality{ph}.ProspectiveAttentionMeanOutput{NEpochs}, 0.5* Baby{babycounter}.Modality{mod}.ProspectiveAttentionStdDevOutput{NEpochs},'-*r');
+        
+        title('Effect of attention on prospective time estimates');
         hold off;
     end
     
 end
+    
+    

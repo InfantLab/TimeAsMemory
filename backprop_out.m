@@ -6,9 +6,8 @@ function OUTPUTS = backprop_out(IN, Wt1, Wt2,hidnoise, beta)
 % generates expected output sequence for given input  
 
 % do we have forgettingrate?
-if nargin < 4, forgettingrate = 0.0; end
-if nargin < 5, hidnoise = 0.0; end
-if nargin < 6, beta = 1.0; end
+if nargin < 4, hidnoise = 0.0; end
+if nargin < 5, beta = 1.0; end
 
 % get the dimensions of our data sets
 [datarows, inelem]=size(IN); 
@@ -16,13 +15,16 @@ if nargin < 6, beta = 1.0; end
 [wt1r,wt1c] = size(Wt1);
 nhidnodes = wt1r;
 
+nblanks = nhidnodes;
+hidzeros = zeros(nblanks,1);
 
 OUTPUTS = [];
 
 for p = 1:datarows
     % get appropriate input & target rows
     % though we will represent them as col vectors
-    A = IN(p,1:inelem)';    
+    A = [IN(p,1:inelem)'; hidzeros];  
+%     A = IN(p,1:inelem)';    
     
     % feedforward
     % layer 1
